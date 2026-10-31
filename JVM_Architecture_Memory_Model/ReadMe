@@ -1,0 +1,518 @@
+what exactly is JVM?
+ava does not directly convert your source code into machine instructions for a specific operating system.
+
+The process looks like this:
+Employee.java
+Java source code
+   |
+Java Compiler (javac)
+Compiles source code
+   |
+Employee.class
+Bytecode — platform-independent instructions
+   |
+JVM
+Loads, verifies, manages memory and executes bytecode
+  |
+Windows, macOS, Linux
+
+JVM = Java Virtual Machine.
+
+It is responsible for:
+- Executing Java bytecode.
+- Managing memory.
+- Loading classes.
+- Garbage collection.
+- Managing threads.
+- Providing runtime optimizations through JIT compilation.
+
+JDK: Development tools + JRE/runtime components.
+JVM: The engine that executes bytecode.
+JRE: Runtime environment concept, containing the JVM and required runtime libraries.
+
+JVM architecture
+There are three major areas to understand:
+1. Class Loader Subsystem — loads Java classes.
+2. Runtime Data Areas — stores objects, variables, class metadata, and execution information.
+3. Execution Engine — executes bytecode using interpreter and JIT, and works with GC.
+
+Runtime Data Areas
+JVM memory is divided into different areas. Not everything goes into Heap!
+
+There are two broad categories:
+Shared across threads	                        Per-thread
+Heap	                                         Java Stack
+Metaspace	                                      PC Register
+Runtime Constant Pool (within class metadata)	Native Method Stack
+
+Heap memory
+Heap is where Java objects are allocated.
+
+public class Employee {
+    public static void main(String[] args) {
+
+        Employee employee = new Employee();
+
+        String name = new String("Yazhini");
+
+        int age = 25;
+    }
+}
+
+- new Employee() → object allocated on Heap.
+- new String("Yazhini") → String object allocated on Heap.
+
+- age = 25 → local primitive variable in the method's Stack frame.
+
+- employee → local reference variable in the Stack frame, referring to the Employee object on Heap.
+- name → local reference variable in the Stack frame, referring to the String object on Heap.
+
+Young Generation and Old Generation:
+
+Heap memory
+Young Generation:
+Eden
+New objects are usually allocated here
+
+Survivor 0
+Surviving objects
+
+Survivor 1
+Surviving objects
+
+-------
+Old Generation
+Objects that survive long enough and are promoted, or otherwise allocated into the old generation by the collector.
+--------
+
+Eden Space
+Most newly created objects are initially allocated in Eden in traditional generational collectors.
+
+Survivor spaces
+Suppose an object survives a young-generation GC because it is still being referenced.
+
+It can be copied into a Survivor space.
+
+There are traditionally two Survivor spaces:
+- S0
+- S1
+Objects may move between these spaces during successive young collections.
+
+Old Generation
+Suppose an object continues to survive multiple young-generation collections.
+
+It may eventually be promoted to Old Generation.
+
+Examples:
+- Application-level caches.
+- Long-lived configuration objects.
+- Singleton Spring beans.
+- Objects retained by long-running sessions.
+
+The simplified lifecycle:
+1. Object gets created in Eden.
+2. Young GC happens.
+3. Unreachable objects are removed.
+4. Reachable objects survive and are copied to Survivor space.
+5. Objects survive further collections.
+6. Some objects get promoted to Old Generation.
+7. Old Generation is also collected by the garbage collector.
+
+Stack memory
+Every Java thread has its own Stack.
+
+Whenever a method is called, JVM creates a Stack frame for that method
+public void methodA() {
+
+    int age = 25;
+
+    methodB();
+}
+
+public void methodB() {
+
+    int salary = 50000;
+}
+
+methodA() gets called → Stack frame created.
+age is stored in that frame.
+methodB() gets called → another Stack frame created.
+salary is stored in the second frame.
+methodB() completes → its frame is removed.
+methodA() completes → its frame is removed.
+
+What happens if Stack memory is exhausted?
+java.lang.StackOverflowError
+
+Common cause:
+public void recursiveMethod() {
+    recursiveMethod();
+}
+
+
+Infinite recursion keeps creating new Stack frames until the thread's Stack limit is reached.
+
+Metaspace:
+public class Employee {
+
+    private int id;
+    private String name;
+
+    public void getEmployee() {
+        System.out.println(name);
+    }
+}
+
+JVM needs to know:
+- Class name: Employee.
+- Field names and types.
+- Method information.
+- Runtime constant pool.
+- Other class metadata.
+This information is stored in Metaspace in modern HotSpot JVMs (Java 8 onwards).
+
+Heap
+Stores actual objects
+Employee object → id = 101, name = John
+
+Metaspace
+Stores class metadata
+Employee class → fields, methods, class metadata
+
+What happens if Metaspace fills up?
+You may get:
+java.lang.OutOfMemoryError: Metaspace
+
+
+Common reasons:
+- Excessive dynamic class generation.
+- Classloader leaks.
+- Repeated application redeployment without unloading old classloaders.
+- Frameworks or libraries generating many classes.
+
+Other JVM memory areas
+PC Register	- Tracks the current JVM instruction for each thread
+Native Method Stack	 - Supports execution of native methods
+Code Cache	- Stores JIT-compiled native machine code
+Runtime Constant Pool	- Stores per-class runtime constants and symbolic references; associated with class metadata
+
+Class Loading Mechanism
+How does a Java class get loaded?
+Suppose you execute:
+Employee employee = new Employee();
+
+
+Before JVM can create an instance, it needs the Employee class to be available.
+
+That's the responsibility of the Class Loader Subsystem.
+
+There are three main classloader categories in modern Java:
+Bootstrap ClassLoader
+Core Java classes — java.lang, java.util, etc.
+
+Platform ClassLoader
+Platform classes and libraries
+
+Application ClassLoader
+Classes from application classpath/module path
+
+Custom ClassLoaders
+Frameworks, plugins, application servers, etc.
+
+Parent delegation model
+Suppose your application needs to load:
+String name = "Yazhini";
+
+
+Which classloader loads String?
+
+The Bootstrap ClassLoader.
+
+For a normal application class such as Employee, the Application ClassLoader is generally responsible.
+
+How does it work?
+1. Application ClassLoader receives a request.
+2. It delegates to its parent.
+3. Parent delegates further up.
+4. If the parent cannot find the class, the child tries to load it.
+Why does Java use parent delegation?
+
+Imagine someone creates their own class called:
+java.lang.String
+
+
+You don't want the application to replace the trusted core Java String implementation.
+
+Parent delegation helps protect core Java classes from being overridden by application classes.
+
+Class loading lifecycle:
+Loading
+JVM locates the class bytecode and creates its runtime representation.
+
+
+Linking
+- Verification: validates bytecode.
+- Preparation: allocates static fields and assigns default values.
+- Resolution: converts symbolic references into direct references, when needed.
+
+Initialization
+Executes static initializers and explicit static field initializers.
+
+public class Employee {
+
+    static int count = 10;
+
+    static {
+        System.out.println("Class initialized");
+    }
+}
+
+During preparation, count initially gets its default value, 0.
+
+During initialization, the explicit initializer sets it to 10, and the static block executes.
+
+Garbage Collection:
+JVM decides when to run garbage collection.
+
+GC automatically reclaims memory occupied by unreachable objects
+
+The important concept is Reachability.
+
+JVM starts from a set of references called GC Roots.
+
+Employee employee = new Employee();
+
+employee = null;
+
+Initially:
+
+employee → Employee object
+
+After:
+
+employee = null
+
+If no other references exist, the Employee object is unreachable.
+
+GC can reclaim it.
+What is Mark and Sweep?
+A simplified garbage collection algorithm:
+1. Mark: Identify reachable objects.
+2. Sweep: Reclaim unreachable objects.
+Some collectors also use copying, compaction, or region-based collection techniques.
+
+Types of GC events
+Young GC / Minor GC
+
+Eden becomes full.
+JVM triggers a young collection.
+Unreachable objects are reclaimed.
+Surviving objects are moved to Survivor regions.
+
+Major GC
+This term is often used for old-generation collection, but its exact meaning is collector- and tool-dependent.
+
+Full GC
+Typically involves collecting the entire Java Heap and may include additional JVM housekeeping.
+
+It can produce significant stop-the-world pauses.
+
+Stop-the-world (STW)
+This is very important for production troubleshooting.
+
+During certain GC phases, application threads are paused.
+
+Imagine:
+
+Your Spring Boot service is processing 1,000 requests per second.
+
+A stop-the-world pause lasts 3 seconds.
+
+During that pause, application threads cannot make normal progress.
+
+Possible symptoms:
+- Increased API latency.
+- Request timeouts.
+- Failed downstream calls.
+- Health-check failures.
+- Potential Kubernetes liveness probe failures.
+Some collectors have concurrent phases where application threads continue running, but even low-pause collectors have some stop-the-world work.
+
+Different Garbage Collectors
+Serial GC	Single GC thread; suitable for small heaps/simple workloads
+Parallel GC	Multiple GC threads; focuses on throughput
+G1 GC	Region-based; balances throughput and pause-time goals
+ZGC	Low-latency collector; designed for very large heaps and low pauses
+
+G1 (Garbage First) is the default collector in typical server configurations on modern JDKs, starting with JDK 9.
+
+Instead of treating Heap as just one continuous Young and Old area, it divides the Heap into regions.
+
+G1:
+- Divides Heap into regions.
+- Tracks region occupancy and collection costs.
+- Prioritizes regions with more reclaimable space.
+- Uses concurrent marking for old-generation collection.
+- Tries to meet a target pause-time goal.
+
+Memory leak vs high memory usage
+
+What is high memory usage?
+Imagine your Spring Boot application has:
+- -Xms = 512 MB
+- -Xmx = 2 GB
+At peak traffic, the application creates many temporary objects.
+
+Heap usage increases:
+Here:
+- Traffic increases.
+- More objects are created.
+- Heap usage increases.
+- GC removes unused objects.
+- Heap usage drops.
+
+What is a memory leak?
+A memory leak happens when your application retains references to objects that it no longer needs.
+
+Because those objects are still reachable, GC cannot collect them.
+
+Imagine this service keeps receiving employee objects.
+
+The static list retains all those objects.
+
+Even if the original requests finish, the objects remain reachable through the static list.
+
+GC cannot remove them.
+
+Over time, Heap usage increases.
+
+Normal usage: Heap increases and GC brings it down.
+Memory leak: Even after GC, retained memory keeps increasing.
+
+Common memory leak scenarios in Spring Boot
+1. Static collections
+static List<Object> cache = new ArrayList<>();
+
+
+Objects are continuously added but never removed.
+
+2. Unbounded cache
+Map<String, Employee> cache = new ConcurrentHashMap<>();
+
+
+If every request adds a new key and nothing expires, memory grows continuously.
+
+3. ThreadLocal not cleaned up
+private static final ThreadLocal<UserContext> context =
+        new ThreadLocal<>();
+
+
+If values are not removed appropriately in pooled threads, they can remain retained.
+
+Correct cleanup pattern:
+try {
+    context.set(userContext);
+    process();
+} finally {
+    context.remove();
+}
+
+4. Listeners and callbacks
+
+Objects register listeners but never unregister them. The listener registry keeps them reachable.
+
+5. Classloader leaks
+
+Old classloaders stay reachable, preventing their classes and associated metadata from being unloaded.
+
+6. Large session objects
+
+An application retains huge objects in HTTP sessions long after they are needed.
+
+How do you distinguish a memory leak from high usage?
+Observation	
+                                   High usage	                Memory leak
+Heap increases	                           Yes	                 Yes
+GC reduces used Heap	                Usually	                Often insufficiently
+Post-GC baseline	                Stabilizes	                     Trends upward
+Correlation with traffic	                Often	           May or may not
+Application eventually OOM	            Not necessarily	       Possible
+Root cause	                     Legitimate allocation demand	Unnecessary retention
+
+JVM memory configuration
+16. What are Xms and Xmx?
+These two options are extremely important.
+-Xms — Initial Heap size
+Specifies the initial/minimum target Heap size.
+-Xmx — Maximum Heap size
+Specifies the maximum Java Heap size
+
+-Xmx only controls Heap. Your process also consumes native memory.
+
+Illustrative container memory budget
+2 GiB
+Java Heap - 1,200 MB
+Metaspace - 150 MB
+Thread stacks - 200 MB
+Direct buffers + other native memory - 300 MB
+
+Heap dump and production debugging
+A Heap dump is a snapshot of objects and their relationships in the Java Heap at a particular moment.
+
+Imagine your production service is consuming 95% Heap.
+
+You want to know:
+- Which objects are consuming memory?
+- Why are they still in memory?
+- Who is retaining them?
+- Is a cache growing uncontrollably?
+- Is one collection retaining millions of objects?
+A Heap dump helps answer these questions.
+
+It usually contains:
+- Objects and their classes.
+- Object sizes.
+- Reference relationships.
+- GC roots.
+- Retained heap information.
+
+Production Scenario:
+GC running frequently still memory not reclaimed means must be memory leak.
+Memory leak
+Objects are retained unnecessarily.
+
+Legitimately high memory usage
+Suppose your service processes 100,000 requests per minute and maintains a large working set.
+The objects are genuinely required by the application.
+GC cannot reclaim them because they are still in use.
+This is not necessarily a leak.
+
+Excessive object allocation
+Suppose your API creates millions of temporary DTOs, Strings and collections.
+Even though GC successfully removes them, the application keeps creating new objects at a high rate.
+This results in frequent GC, high CPU consumption and increased latency.
+This is called high allocation pressure.
+
+A ConcurrentHashMap protects concurrent access. It does not automatically prevent unbounded growth.
+
+Your possible fixes:
+- Bounded cache.
+- TTL expiration.
+- Eviction policy.
+- Remove entries when no longer required.
+- Avoid storing unnecessarily large objects.
+You should investigate:
+1. Who owns this map? Is it a Spring singleton?
+2. Which methods insert entries?
+3. Are entries removed or expired?
+4. Are cache keys unique for every request?
+5. Is there a maximum cache size?
+6. Are TTL or eviction policies implemented?
+7. Is the cache supposed to retain these employees?
+8. Can concurrent requests insert duplicate or unnecessary entries?
+
+
+
+
+
+
